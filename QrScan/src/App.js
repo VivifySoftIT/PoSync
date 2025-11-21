@@ -2,8 +2,6 @@ import React from "react";
 import { HashRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useEffect } from "react";
 import Scan from './Screens/Scan';
- 
- 
 
 // Scroll to top on route change
 function useScrollToTop() {
@@ -21,8 +19,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/Scan" />} />
         <Route path="/Scan" element={<Scan />} />
-   
-  
+        <Route path="/Scan/QRid=:qrId" element={<Scan />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </div>
