@@ -1,5 +1,5 @@
 {
-  "name": "Sugam Studio",
+  "name": "Scan",
   "version": "0.1.0",
   "private": true,
   "dependencies": {
@@ -51,7 +51,7 @@
     ]
   },
   "proxy": "http:// 103.230.85.44:82/",
-  "homepage": "/Sugam Studio",
+  "homepage": "/Scan",
   "devDependencies": {
     "autoprefixer": "^10.4.22",
     "language-subtag-registry": "^0.3.23",
