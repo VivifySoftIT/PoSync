@@ -19,8 +19,9 @@ function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/Scan" />} />
         <Route path="/Scan" element={<Scan />} />
-        <Route path="/Scan/QRid=:qrId" element={<Scan />} />
-        <Route path="*" element={<Navigate to="/" />} />
+        {/* Catch ALL routes under /Scan - this will handle /Scan/QRid=... */}
+        <Route path="/Scan/*" element={<Scan />} />
+        <Route path="*" element={<Navigate to="/Scan" />} />
       </Routes>
     </div>
   );
