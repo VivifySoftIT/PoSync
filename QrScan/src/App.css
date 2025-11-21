@@ -1,0 +1,142 @@
+/* App.css */
+
+/* Header Styles */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 5%;
+  /* Light blue-transparent background */
+  background-color:rgb(128, 0, 0);
+  /* background: rgb(237, 232, 232);  */
+  backdrop-filter: blur(12px); /* Glass effect */
+  -webkit-backdrop-filter: blur(12px); /* For Safari support */
+  
+  /* Soft blue outer glow/shadow */
+  box-shadow: 
+    0 4px 20px rgba(100, 150, 255, 0.2),   /* General soft blue glow */
+    0 0 15px rgba(130, 180, 255, 0.15);    /* Inner ambient light */
+  
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  font-family: 'Poppins', sans-serif;
+  transition: all 0.4s ease;
+  border-bottom: 1px solid rgba(150, 180, 255, 0.2);
+  /* Optional: slight glow on hover */
+}
+
+/* Enhanced glow on hover */
+.header:hover {
+  box-shadow: 
+    0 6px 25px rgba(251, 252, 255, 0.3),
+    0 0 20px rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
+}
+
+/* Logo Container */
+.logo-container {
+  display: flex;
+  align-items: center;
+  /* transition: transform 0.3s ease; */
+}
+
+.logo-container img {
+  height: 50px;
+  width: 60px;
+  /* transition: all 0.3s ease; */
+  border-radius: 50%;
+}
+
+.logo-container:hover img {
+  transform: scale(1.08);
+  box-shadow: 0 0 15px rgba(130, 180, 255, 0.4);
+}
+.container{
+  background-color: #82aee1;
+}
+/* Navigation List */
+.nav ul {
+  list-style: none;
+  display: flex;
+  gap: 30px;
+  margin: 0;
+  padding: 0;
+}
+
+.nav li {
+  margin: 0;
+  position: relative;
+}
+
+/* Base Link Style */
+.nav a {
+  text-decoration: none;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 500;
+  transition: color 0.3s ease;
+  padding: 5px 0;
+  position: relative;
+}
+
+/* Animated Underline - Soft Blue */
+.nav a::after {
+  content: '';
+  position: absolute;
+  width: 0;
+  height: 2px;
+  bottom: 0;
+  left: 0;
+  background: linear-gradient(90deg, transparent, rgba(244, 244, 244, 0.9), transparent);
+  background-color:rgb(128, 0, 0);
+    color: #ffffff;
+  transition: width 0.3s ease;
+  border-radius: 1px;
+}
+
+.nav a:hover::after,
+.nav a.active::after {
+  width: 100%;
+}
+
+.nav a:hover,
+.nav a.active {
+  /* color: #042d88; */
+      color: #ffffff;
+}
+
+/* Active Link Style */
+.nav a.active {
+  font-weight: 600;
+}
+
+/* Login Button - Modern Light Blue */
+.nav a.login-link {
+color:rgb(128, 0, 0);
+    background-color: white !important;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-weight: 600;
+  transition: all 0.3s ease !important;
+  box-shadow: 0 3px 8px rgba(91, 134, 229, 0.3);
+  border: none;
+}
+
+.nav a.login-link:hover {
+  background-color: rgb(128, 0, 0);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(91, 134, 229, 0.4);
+}
+
+.nav a.login-link:active {
+  transform: translateY(0);
+}
+@keyframes glowPulse {
+  0% { box-shadow: 0 4px 20px rgba(239, 84, 84, 0.2), 0 0 15px rgba(130, 180, 255, 0.1); }
+  50% { box-shadow: 0 4px 20px rgba(255, 100, 100, 0.25), 0 0 18px rgba(130, 180, 255, 0.18); }
+  100% { box-shadow: 0 4px 20px rgba(100, 150, 255, 0.2), 0 0 15px rgba(130, 180, 255, 0.1); }
+}
+
+/* Apply to header if desired */
+/* .header { animation: glowPulse 4s ease-in-out infinite; } */
