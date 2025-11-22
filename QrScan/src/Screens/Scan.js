@@ -440,7 +440,242 @@ const Scan = () => {
     }
   };
 
-  // ... (keep the rest of your render methods and styles the same)
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    try {
+      return new Date(dateString).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    } catch {
+      return dateString;
+    }
+  };
+
+  // Extract and display the specific fields
+  const renderPurchaseOrderDetails = (data) => {
+    if (!data) return null;
+
+    const poNumber = data.poNumber || 'N/A';
+    const poDate = data.poDate || 'N/A';
+    const customer = data.customer || 'N/A';
+    const productCode = data.productCode || 'N/A';
+    const job = data.job || 'N/A';
+    const quantity = data.qty || data.quantity || 'N/A';
+    const status = data.status || 'N/A';
+
+    const details = [
+      {
+        icon: <Package size={16} color="#8B5CF6" />,
+        label: "Quantity",
+        value: isEditing ? (
+          <div style={styles.quantityEditContainer}>
+            <input
+              type="number"
+              value={enteredQty}
+              onChange={(e) => setEnteredQty(e.target.value)}
+              style={styles.quantityInput}
+              placeholder="Enter quantity"
+            />
+            <button
+              onClick={updatePOQuantity}
+              disabled={updateLoading}
+              style={styles.saveButton}
+            >
+              {updateLoading ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={14} />}
+            </button>
+            <button
+              onClick={() => setIsEditing(false)}
+              style={styles.cancelButton}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        ) : (
+          <div style={styles.quantityDisplayContainer}>
+            <span>{quantity}</span>
+            <button
+              onClick={() => setIsEditing(true)}
+              style={styles.editButton}
+            >
+              <Edit size={14} />
+            </button>
+          </div>
+        )
+      },
+      {
+        icon: <FileText size={16} color="#3B82F6" />,
+        label: "PO Number",
+        value: poNumber
+      },
+      {
+        icon: <Calendar size={16} color="#10B981" />,
+        label: "PO Date",
+        value: formatDate(poDate)
+      },
+      {
+        icon: <User size={16} color="#8B5CF6" />,
+        label: "Customer",
+        value: customer
+      },
+      {
+        icon: <Package size={16} color="#F59E0B" />,
+        label: "Product Code",
+        value: productCode
+      },
+      {
+        icon: <FileText size={16} color="#EF4444" />,
+        label: "Job",
+        value: job
+      },
+      {
+        icon: <CheckCircle size={16} color="#10B981" />,
+        label: "Status",
+        value: status
+      }
+    ];
+
+    return (
+      <div style={styles.detailsContainer}>
+        <div style={styles.detailsHeader}>
+          <FileText size={18} color="#000080" />
+          <span style={styles.detailsTitle}>Purchase Order Details</span>
+        </div>
+        <div style={styles.detailsGrid}>
+          {details.map((detail, index) => (
+            <div key={index} style={styles.detailItem}>
+              <div style={styles.detailIcon}>
+                {detail.icon}
+              </div>
+              <div style={styles.detailContent}>
+                <div style={styles.detailLabel}>{detail.label}</div>
+                <div style={styles.detailValue}>{detail.value}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+        
+        <div style={styles.successMessage}>
+          <CheckCircle size={16} color="#10B981" />
+          <span>QR code scanned successfully!</span>
+        </div>
+      </div>
+    );
+  };
+
+  // Render tab content based on active tab
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'search':
+        return (
+          <div style={styles.tabContent}>
+            <div style={styles.cameraContainer}>
+              {cameraError ? (
+                <div style={styles.cameraError}>
+                  <CameraOff size={48} color="#EF4444" />
+                  <p style={styles.cameraErrorText}>{cameraError}</p>
+                  <button 
+                    style={styles.retryButton}
+                    onClick={startCamera}
+                  >
+                    Retry Camera
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <video
+                    ref={videoRef}
+                    style={styles.cameraVideo}
+                    playsInline
+                    muted
+                  />
+                  <canvas ref={canvasRef} style={{ display: 'none' }} />
+                  
+                  {!cameraReady && (
+                    <div style={styles.cameraLoading}>
+                      <Loader size={32} color="#3B82F6" style={{ animation: 'spin 1s linear infinite' }} />
+                      <p style={styles.loadingText}>Initializing camera...</p>
+                    </div>
+                  )}
+                  
+                  <div style={styles.scannerFrame}>
+                    <div style={styles.cornerTL}></div>
+                    <div style={styles.cornerTR}></div>
+                    <div style={styles.cornerBL}></div>
+                    <div style={styles.cornerBR}></div>
+                  </div>
+                  
+                  {cameraReady && (
+                    <>
+                      <div style={styles.scanLine}></div>
+                      <div style={styles.scanningStatus}>
+                        <Loader size={16} color="#3B82F6" style={{ animation: 'spin 1s linear infinite' }} />
+                        <p style={styles.scanningText}>Point at a QR code</p>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+            <div style={styles.tabHint}>
+              Point your camera at a QR code to scan automatically
+            </div>
+          </div>
+        );
+      
+      case 'translate':
+        return (
+          <div style={styles.tabContent}>
+            <div style={styles.comingSoonContainer}>
+              <Languages size={64} color="#8B5CF6" />
+              <h3 style={styles.comingSoonTitle}>Translate</h3>
+              <p style={styles.comingSoonText}>
+                Coming soon! This feature will allow you to translate text from QR codes.
+              </p>
+            </div>
+          </div>
+        );
+      
+      case 'live':
+        return (
+          <div style={styles.tabContent}>
+            <div style={styles.comingSoonContainer}>
+              <Camera size={64} color="#3B82F6" />
+              <h3 style={styles.comingSoonTitle}>Live View</h3>
+              <p style={styles.comingSoonText}>
+                Coming soon! Real-time QR code detection and scanning.
+              </p>
+            </div>
+          </div>
+        );
+      
+      case 'create':
+        return (
+          <div style={styles.tabContent}>
+            <div style={styles.gallerySection}>
+              <div 
+                style={styles.galleryContainer}
+                onClick={handleGalleryScan}
+              >
+                <div style={styles.galleryContent}>
+                  <Image size={48} color="#8B5CF6" />
+                  <p style={styles.galleryText}>Choose from Gallery</p>
+                  <p style={styles.gallerySubtext}>Select an image containing QR code</p>
+                </div>
+              </div>
+              
+              <div style={styles.galleryHint}>
+                Or use the camera above to scan live QR codes
+              </div>
+            </div>
+          </div>
+        );
+      
+      default:
+        return null;
+    }
+  };
 
   return (
     <div style={styles.container}>
@@ -604,6 +839,7 @@ const Scan = () => {
     </div>
   );
 };
+
 const styles = {
   container: {
     minHeight: '100vh',
@@ -622,6 +858,18 @@ const styles = {
     borderRadius: '8px',
     marginBottom: '16px',
     fontSize: '14px',
+    fontWeight: '500',
+    textAlign: 'center',
+    maxWidth: '500px',
+    width: '100%',
+  },
+  debugInfo: {
+    backgroundColor: '#dbeafe',
+    color: '#1e40af',
+    padding: '8px 16px',
+    borderRadius: '8px',
+    marginBottom: '16px',
+    fontSize: '12px',
     fontWeight: '500',
     textAlign: 'center',
     maxWidth: '500px',
@@ -675,6 +923,10 @@ const styles = {
     maxWidth: '200px',
     boxShadow: '0 2px 6px rgba(59, 130, 246, 0.3)',
     transition: 'all 0.2s ease',
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+    cursor: 'not-allowed',
   },
   warningText: {
     color: '#EF4444',
@@ -980,10 +1232,7 @@ const styles = {
     backgroundColor: '#3B82F6',
     animation: 'scan 2s linear infinite',
   },
-  spinner: {
-    animation: 'spin 1s linear infinite',
-  },
-  // Purchase Order Details Styles (keep existing)
+  // Purchase Order Details Styles
   detailsContainer: {
     marginTop: '20px',
     padding: '16px',
@@ -1124,30 +1373,14 @@ const styles = {
     color: '#EF4444',
     margin: 0,
   },
-
-  debugInfo: {
-    backgroundColor: '#dbeafe',
-    color: '#1e40af',
-    padding: '8px 16px',
-    borderRadius: '8px',
-    marginBottom: '16px',
-    fontSize: '12px',
-    fontWeight: '500',
-    textAlign: 'center',
-    maxWidth: '500px',
-    width: '100%',
-  },
-  
-  buttonDisabled: {
-    opacity: 0.6,
-    cursor: 'not-allowed',
+  dataContainer: {
+    padding: '12px',
   },
   errorMessage: {
     fontSize: '12px',
     color: '#DC2626',
     wordBreak: 'break-all',
     margin: 0,
-    padding: '12px',
     lineHeight: '1.4',
   },
 };
