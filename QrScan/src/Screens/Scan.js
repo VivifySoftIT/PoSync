@@ -19,7 +19,7 @@ const Scan = () => {
   const [scanningActive, setScanningActive] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [scanningFromGallery, setScanningFromGallery] = useState(false);
-  const [activeTab, setActiveTab] = useState('search'); // 'search', 'translate', 'live', 'create'
+  const [activeTab, setActiveTab] = useState('search');
   
   const location = useLocation();
   const videoRef = useRef(null);
@@ -94,10 +94,14 @@ const Scan = () => {
     }
   };
 
-  // Extract QR ID from scanned URL
+  // Improved QR ID extraction from scanned data
   const extractQRIdFromScannedData = (scannedText) => {
+    console.log("Raw scanned text:", scannedText);
+    
+    // Try to extract QR ID from various patterns
     const patterns = [
       /QRid=([a-f0-9-]+)/i,
+      /\/QRid\/([a-f0-9-]+)/i,
       /\/([a-f0-9-]{36})$/i,
       /([a-f0-9-]{8}-[a-f0-9-]{4}-[a-f0-9-]{4}-[a-f0-9-]{4}-[a-f0-9-]{12})/i
     ];
@@ -105,27 +109,42 @@ const Scan = () => {
     for (const pattern of patterns) {
       const match = scannedText.match(pattern);
       if (match && match[1]) {
+        console.log("Extracted QR ID using pattern:", pattern, "Result:", match[1]);
         return match[1];
       }
     }
 
+    // If no pattern matches, try to extract any UUID-like string
+    const uuidMatch = scannedText.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    if (uuidMatch) {
+      console.log("Extracted UUID:", uuidMatch[0]);
+      return uuidMatch[0];
+    }
+
+    console.log("No QR ID extracted, using raw text:", scannedText);
     return scannedText;
   };
 
   // Optimized QR Code Scanning Function
   const scanQRCode = () => {
-    if (!videoRef.current || !canvasRef.current || !cameraReady) return;
+    if (!videoRef.current || !canvasRef.current || !cameraReady || !scanningActive) return;
 
     try {
       const video = videoRef.current;
       const canvas = canvasRef.current;
       
-      if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
+      // Check if video is ready
+      if (video.readyState !== video.HAVE_ENOUGH_DATA || video.videoWidth === 0) {
+        requestAnimationFrame(scanQRCode);
+        return;
+      }
 
       const context = canvas.getContext('2d', { willReadFrequently: true });
       
-      const scanWidth = 300;
-      const scanHeight = 300;
+      // Use actual video dimensions for better detection
+      const scanWidth = video.videoWidth;
+      const scanHeight = video.videoHeight;
+      
       canvas.width = scanWidth;
       canvas.height = scanHeight;
       
@@ -137,22 +156,21 @@ const Scan = () => {
       });
       
       if (code && code.data) {
-        console.log("QR Code detected:", code.data);
+        console.log("✅ QR Code detected:", code.data);
         const extractedId = extractQRIdFromScannedData(code.data);
-        console.log("Extracted ID:", extractedId);
+        console.log("📋 Extracted ID:", extractedId);
         
         stopQRScanning();
         callQRApi(extractedId);
         return;
       }
     } catch (err) {
-      console.error('QR scanning error:', err);
+      console.error('❌ QR scanning error:', err);
     }
 
+    // Continue scanning
     if (scanningActive) {
-      animationFrameRef.current = setTimeout(() => {
-        requestAnimationFrame(scanQRCode);
-      }, 100);
+      animationFrameRef.current = requestAnimationFrame(scanQRCode);
     }
   };
 
@@ -167,7 +185,6 @@ const Scan = () => {
     setScanningActive(false);
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
-      clearTimeout(animationFrameRef.current);
       animationFrameRef.current = null;
     }
   };
@@ -196,15 +213,15 @@ const Scan = () => {
         });
         
         if (code && code.data) {
-          console.log("QR Code detected from image:", code.data);
+          console.log("✅ QR Code detected from image:", code.data);
           const extractedId = extractQRIdFromScannedData(code.data);
           callQRApi(extractedId);
         } else {
-          setError('No QR code found in the selected image');
+          setError('❌ No QR code found in the selected image');
           setLoading(false);
         }
       } catch (err) {
-        console.error('Image QR scanning error:', err);
+        console.error('❌ Image QR scanning error:', err);
         setError('Failed to scan QR code from image');
         setLoading(false);
       } finally {
@@ -256,6 +273,7 @@ const Scan = () => {
         return false;
       }
 
+      // Stop existing stream
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
       }
@@ -263,8 +281,8 @@ const Scan = () => {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { 
           facingMode: 'environment',
-          width: { ideal: 640 },
-          height: { ideal: 480 }
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
         },
         audio: false
       });
@@ -274,27 +292,33 @@ const Scan = () => {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         
-        videoRef.current.onloadedmetadata = () => {
-          videoRef.current.play().then(() => {
-            setCameraReady(true);
-            setTimeout(() => {
-              startQRScanning();
-            }, 300);
-          }).catch(err => {
-            console.error('Video play failed:', err);
-            setCameraError('Failed to start camera: ' + err.message);
-          });
-        };
+        return new Promise((resolve) => {
+          videoRef.current.onloadedmetadata = () => {
+            videoRef.current.play().then(() => {
+              setCameraReady(true);
+              console.log("📹 Camera started successfully");
+              setTimeout(() => {
+                startQRScanning();
+              }, 500);
+              resolve(true);
+            }).catch(err => {
+              console.error('❌ Video play failed:', err);
+              setCameraError('Failed to start camera: ' + err.message);
+              resolve(false);
+            });
+          };
 
-        videoRef.current.onerror = (err) => {
-          console.error('Video error:', err);
-          setCameraError('Camera error occurred');
-        };
+          videoRef.current.onerror = (err) => {
+            console.error('❌ Video error:', err);
+            setCameraError('Camera error occurred');
+            resolve(false);
+          };
+        });
       }
       
       return true;
     } catch (err) {
-      console.error('Camera access error:', err);
+      console.error('❌ Camera access error:', err);
       let errorMessage = 'Cannot access camera';
       
       if (err.name === 'NotAllowedError') {
@@ -328,7 +352,7 @@ const Scan = () => {
     }
   };
 
-  // Main scan button click - show scanner overlay with Google Lens style
+  // Main scan button click
   const handleScanClick = async () => {
     setIsScanning(true);
     setError('');
@@ -351,11 +375,17 @@ const Scan = () => {
     setLoading(true);
     setError('');
     try {
+      console.log("🔍 Calling QR API with ID:", id);
+      
       const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
-      const url = `${baseUrl}/api/posync/QR?id=${id}`;
+      const url = `${baseUrl}/api/posync/QR?id=${encodeURIComponent(id)}`;
+      
+      console.log("📡 API URL:", url);
       
       const response = await axios.get(url);
       const data = response.data;
+      
+      console.log("✅ API Response:", data);
       
       setScanResult(data);
       setScannedData(data);
@@ -367,8 +397,14 @@ const Scan = () => {
       }
       
     } catch (err) {
-      console.error('QR API Error:', err);
-      setError(err.response?.data?.statusDesc || err.message || 'Failed to scan QR code');
+      console.error('❌ QR API Error:', err);
+      const errorMsg = err.response?.data?.statusDesc || err.message || 'Failed to scan QR code';
+      setError(errorMsg);
+      
+      // Keep scanner open if API call fails
+      if (isScanning && hasCamera) {
+        startQRScanning();
+      }
     } finally {
       setLoading(false);
       setScanningFromGallery(false);
@@ -404,242 +440,7 @@ const Scan = () => {
     }
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    try {
-      return new Date(dateString).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      });
-    } catch {
-      return dateString;
-    }
-  };
-
-  // Extract and display the specific fields
-  const renderPurchaseOrderDetails = (data) => {
-    if (!data) return null;
-
-    const poNumber = data.poNumber || 'N/A';
-    const poDate = data.poDate || 'N/A';
-    const customer = data.customer || 'N/A';
-    const productCode = data.productCode || 'N/A';
-    const job = data.job || 'N/A';
-    const quantity = data.qty || data.quantity || 'N/A';
-    const status = data.status || 'N/A';
-
-    const details = [
-      {
-        icon: <Package size={16} color="#8B5CF6" />,
-        label: "Quantity",
-        value: isEditing ? (
-          <div style={styles.quantityEditContainer}>
-            <input
-              type="number"
-              value={enteredQty}
-              onChange={(e) => setEnteredQty(e.target.value)}
-              style={styles.quantityInput}
-              placeholder="Enter quantity"
-            />
-            <button
-              onClick={updatePOQuantity}
-              disabled={updateLoading}
-              style={styles.saveButton}
-            >
-              {updateLoading ? <Loader size={14} /> : <Save size={14} />}
-            </button>
-            <button
-              onClick={() => setIsEditing(false)}
-              style={styles.cancelButton}
-            >
-              <X size={14} />
-            </button>
-          </div>
-        ) : (
-          <div style={styles.quantityDisplayContainer}>
-            <span>{quantity}</span>
-            <button
-              onClick={() => setIsEditing(true)}
-              style={styles.editButton}
-            >
-              <Edit size={14} />
-            </button>
-          </div>
-        )
-      },
-      {
-        icon: <FileText size={16} color="#3B82F6" />,
-        label: "PO Number",
-        value: poNumber
-      },
-      {
-        icon: <Calendar size={16} color="#10B981" />,
-        label: "PO Date",
-        value: formatDate(poDate)
-      },
-      {
-        icon: <User size={16} color="#8B5CF6" />,
-        label: "Customer",
-        value: customer
-      },
-      {
-        icon: <Package size={16} color="#F59E0B" />,
-        label: "Product Code",
-        value: productCode
-      },
-      {
-        icon: <FileText size={16} color="#EF4444" />,
-        label: "Job",
-        value: job
-      },
-      {
-        icon: <CheckCircle size={16} color="#10B981" />,
-        label: "Status",
-        value: status
-      }
-    ];
-
-    return (
-      <div style={styles.detailsContainer}>
-        <div style={styles.detailsHeader}>
-          <FileText size={18} color="#000080" />
-          <span style={styles.detailsTitle}>Purchase Order Details</span>
-        </div>
-        <div style={styles.detailsGrid}>
-          {details.map((detail, index) => (
-            <div key={index} style={styles.detailItem}>
-              <div style={styles.detailIcon}>
-                {detail.icon}
-              </div>
-              <div style={styles.detailContent}>
-                <div style={styles.detailLabel}>{detail.label}</div>
-                <div style={styles.detailValue}>{detail.value}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-        
-        <div style={styles.successMessage}>
-          <CheckCircle size={16} color="#10B981" />
-          <span>QR code scanned successfully!</span>
-        </div>
-      </div>
-    );
-  };
-
-  // Render tab content based on active tab
-  const renderTabContent = () => {
-    switch (activeTab) {
-      case 'search':
-        return (
-          <div style={styles.tabContent}>
-            <div style={styles.cameraContainer}>
-              {cameraError ? (
-                <div style={styles.cameraError}>
-                  <CameraOff size={48} color="#EF4444" />
-                  <p style={styles.cameraErrorText}>{cameraError}</p>
-                  <button 
-                    style={styles.retryButton}
-                    onClick={startCamera}
-                  >
-                    Retry Camera
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <video
-                    ref={videoRef}
-                    style={styles.cameraVideo}
-                    playsInline
-                    muted
-                  />
-                  <canvas ref={canvasRef} style={{ display: 'none' }} />
-                  
-                  {!cameraReady && (
-                    <div style={styles.cameraLoading}>
-                      <Loader size={32} color="#3B82F6" style={styles.spinner} />
-                      <p style={styles.loadingText}>Initializing camera...</p>
-                    </div>
-                  )}
-                  
-                  <div style={styles.scannerFrame}>
-                    <div style={styles.cornerTL}></div>
-                    <div style={styles.cornerTR}></div>
-                    <div style={styles.cornerBL}></div>
-                    <div style={styles.cornerBR}></div>
-                  </div>
-                  
-                  {cameraReady && (
-                    <>
-                      <div style={styles.scanLine}></div>
-                      <div style={styles.scanningStatus}>
-                        <Loader size={16} color="#3B82F6" style={styles.spinner} />
-                        <p style={styles.scanningText}>Point at a QR code</p>
-                      </div>
-                    </>
-                  )}
-                </>
-              )}
-            </div>
-            <div style={styles.tabHint}>
-              Point your camera at a QR code to scan automatically
-            </div>
-          </div>
-        );
-      
-      case 'translate':
-        return (
-          <div style={styles.tabContent}>
-            <div style={styles.comingSoonContainer}>
-              <Languages size={64} color="#8B5CF6" />
-              <h3 style={styles.comingSoonTitle}>Translate</h3>
-              <p style={styles.comingSoonText}>
-                Coming soon! This feature will allow you to translate text from QR codes.
-              </p>
-            </div>
-          </div>
-        );
-      
-      case 'live':
-        return (
-          <div style={styles.tabContent}>
-            <div style={styles.comingSoonContainer}>
-              <Camera size={64} color="#3B82F6" />
-              <h3 style={styles.comingSoonTitle}>Live View</h3>
-              <p style={styles.comingSoonText}>
-                Coming soon! Real-time QR code detection and scanning.
-              </p>
-            </div>
-          </div>
-        );
-      
-      case 'create':
-        return (
-          <div style={styles.tabContent}>
-            <div style={styles.gallerySection}>
-              <div 
-                style={styles.galleryContainer}
-                onClick={handleGalleryScan}
-              >
-                <div style={styles.galleryContent}>
-                  <Image size={48} color="#8B5CF6" />
-                  <p style={styles.galleryText}>Choose from Gallery</p>
-                  <p style={styles.gallerySubtext}>Select an image containing QR code</p>
-                </div>
-              </div>
-              
-              <div style={styles.galleryHint}>
-                Or use the camera above to scan live QR codes
-              </div>
-            </div>
-          </div>
-        );
-      
-      default:
-        return null;
-    }
-  };
+  // ... (keep the rest of your render methods and styles the same)
 
   return (
     <div style={styles.container}>
@@ -656,6 +457,14 @@ const Scan = () => {
       {getQRIdFromURL() && !scannedData && (
         <div style={styles.qrIdInfo}>
           📱 QR Code Detected: {getQRIdFromURL()}
+          {loading && <Loader size={14} style={{ marginLeft: '8px', animation: 'spin 1s linear infinite' }} />}
+        </div>
+      )}
+
+      {/* Debug info */}
+      {scannedData && (
+        <div style={styles.debugInfo}>
+          🔍 Scanned QR ID: {getQRIdFromURL() || scannedData.qrCodeId || scannedData.id}
         </div>
       )}
 
@@ -673,11 +482,14 @@ const Scan = () => {
           </div>
 
           <button 
-            style={styles.mainScanButton}
+            style={{
+              ...styles.mainScanButton,
+              ...(loading ? styles.buttonDisabled : {})
+            }}
             onClick={handleScanClick}
             disabled={loading}
           >
-            {loading ? <Loader size={16} /> : <ScanIcon size={16} />}
+            {loading ? <Loader size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <ScanIcon size={16} />}
             {loading ? 'Scanning...' : 'Scan QR Code'}
           </button>
 
@@ -699,6 +511,12 @@ const Scan = () => {
               </div>
               <div style={styles.dataContainer}>
                 <p style={styles.errorMessage}>{error}</p>
+                <button 
+                  style={styles.retryButton}
+                  onClick={handleScanClick}
+                >
+                  Try Again
+                </button>
               </div>
             </div>
           )}
@@ -786,7 +604,6 @@ const Scan = () => {
     </div>
   );
 };
-
 const styles = {
   container: {
     minHeight: '100vh',
@@ -1306,6 +1123,24 @@ const styles = {
     fontWeight: '600',
     color: '#EF4444',
     margin: 0,
+  },
+
+  debugInfo: {
+    backgroundColor: '#dbeafe',
+    color: '#1e40af',
+    padding: '8px 16px',
+    borderRadius: '8px',
+    marginBottom: '16px',
+    fontSize: '12px',
+    fontWeight: '500',
+    textAlign: 'center',
+    maxWidth: '500px',
+    width: '100%',
+  },
+  
+  buttonDisabled: {
+    opacity: 0.6,
+    cursor: 'not-allowed',
   },
   errorMessage: {
     fontSize: '12px',
