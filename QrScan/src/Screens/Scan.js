@@ -1,29 +1,25 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Scan as ScanIcon, CheckCircle, X, Loader, FileText, Calendar, User, Package, Edit, Save, Camera, CameraOff, Image, Search, Languages } from "lucide-react";
+import { Scan as ScanIcon, CheckCircle, X, Loader, FileText, Calendar, User, Package, Save, Camera, CameraOff } from "lucide-react";
 import axios from 'axios';
 import API_BASE_URL from './apiConfig';
-import { useLocation } from "react-router-dom";
 import jsQR from "jsqr";
 
-const Scan = () => {
+const ScanSimple = () => {
   const [isScanning, setIsScanning] = useState(false);
   const [scannedData, setScannedData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [isEditing, setIsEditing] = useState(false);
   const [enteredQty, setEnteredQty] = useState('');
   const [updateLoading, setUpdateLoading] = useState(false);
   const [cameraError, setCameraError] = useState('');
   const [hasCamera, setHasCamera] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
-  const [activeTab, setActiveTab] = useState('search');
   
-  const location = useLocation();
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const canvasRef = useRef(null);
-  const fileInputRef = useRef(null);
   const scanIntervalRef = useRef(null);
+  const lastScannedCode = useRef(null);
 
   // Check if device has camera
   useEffect(() => {
@@ -33,125 +29,51 @@ const Scan = () => {
           const devices = await navigator.mediaDevices.enumerateDevices();
           const videoDevices = devices.filter(device => device.kind === 'videoinput');
           setHasCamera(videoDevices.length > 0);
-          console.log("📷 Camera check:", videoDevices.length > 0 ? "Available" : "Not available");
         } else {
           setHasCamera(false);
         }
       } catch (err) {
-        console.log('Camera check failed:', err);
         setHasCamera(false);
       }
     };
     checkCamera();
   }, []);
 
-  // Enhanced QR ID extraction from URL
-  const getQRIdFromURL = () => {
-    const currentPath = location.pathname;
-    const searchParams = new URLSearchParams(location.search);
-
-    // Check for QRid in path
-    if (currentPath.includes('QRid=')) {
-      const qrIdMatch = currentPath.match(/QRid=([^\/]+)/);
-      if (qrIdMatch && qrIdMatch[1]) {
-        return qrIdMatch[1];
-      }
-    }
-
-    // Check for UUID in path
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    const pathSegments = currentPath.split('/').filter(segment => segment);
-    const lastSegment = pathSegments[pathSegments.length - 1];
-    
-    if (uuidRegex.test(lastSegment)) {
-      return lastSegment;
-    }
-
-    // Check query parameters
-    const queryQRId = searchParams.get('QRid');
-    if (queryQRId) {
-      return queryQRId;
-    }
-
-    return null;
-  };
-
-  // Handle auto-scan from URL
-  useEffect(() => {
-    const extractedQRId = getQRIdFromURL();
-    if (extractedQRId) {
-      handleAutoScan(extractedQRId);
-    }
-  }, [location]);
-
-  const handleAutoScan = async (qrId) => {
-    setLoading(true);
-    setError('');
-    try {
-      await callQRApi(qrId);
-    } catch (err) {
-      setError('Auto scan failed: ' + (err.message || 'Unknown error'));
-      setLoading(false);
-    }
-  };
-
-  // SIMPLIFIED QR ID extraction
+  // Extract QR ID from scanned data
   const extractQRIdFromScannedData = (scannedText) => {
-    console.log("🔍 Raw QR data:", scannedText);
-    
-    // First, try to find any UUID pattern
     const uuidPattern = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
     const uuidMatch = scannedText.match(uuidPattern);
-    if (uuidMatch) {
-      console.log("✅ Found UUID:", uuidMatch[0]);
-      return uuidMatch[0];
-    }
+    if (uuidMatch) return uuidMatch[0];
 
-    // Try QRid pattern
     const qrIdPattern = /QRid=([^&]+)/i;
     const qrIdMatch = scannedText.match(qrIdPattern);
-    if (qrIdMatch && qrIdMatch[1]) {
-      console.log("✅ Found QRid:", qrIdMatch[1]);
-      return qrIdMatch[1];
-    }
+    if (qrIdMatch && qrIdMatch[1]) return qrIdMatch[1];
 
-    // If it's a URL, try to get the last segment
     if (scannedText.includes('/')) {
       const segments = scannedText.split('/').filter(seg => seg);
       const lastSegment = segments[segments.length - 1];
-      if (lastSegment) {
-        console.log("✅ Using last URL segment:", lastSegment);
-        return lastSegment;
-      }
+      if (lastSegment) return lastSegment;
     }
 
-    // If nothing else works, return the raw text
-    console.log("✅ Using raw text:", scannedText);
     return scannedText;
   };
 
-  // SIMPLE QR SCANNING FUNCTION
+  // Start QR Scanning
   const startQRScanning = () => {
-    if (!videoRef.current || !canvasRef.current) {
-      console.log("❌ Video or canvas not ready");
-      return;
-    }
+    if (!videoRef.current || !canvasRef.current) return;
 
-    console.log("🔄 Starting QR scanning...");
-    
-    // Clear any existing interval
     if (scanIntervalRef.current) {
       clearInterval(scanIntervalRef.current);
     }
+
+    lastScannedCode.current = null;
     
     scanIntervalRef.current = setInterval(() => {
       try {
         const video = videoRef.current;
         const canvas = canvasRef.current;
         
-        if (!video || video.readyState !== video.HAVE_ENOUGH_DATA) {
-          return;
-        }
+        if (!video || video.readyState !== video.HAVE_ENOUGH_DATA) return;
 
         const context = canvas.getContext('2d');
         const width = video.videoWidth;
@@ -167,112 +89,43 @@ const Scan = () => {
             inversionAttempts: 'dontInvert',
           });
           
-          if (code) {
+          if (code && code.data !== lastScannedCode.current) {
             console.log("🎯 QR Code Found:", code.data);
-            const extractedId = extractQRIdFromScannedData(code.data);
-            console.log("📋 Extracted ID for API:", extractedId);
+            lastScannedCode.current = code.data;
             
-            // Stop scanning and call API
+            const extractedId = extractQRIdFromScannedData(code.data);
+            console.log("📋 Extracted ID:", extractedId);
+            
+            // Immediately stop scanning and close scanner
             stopQRScanning();
+            setIsScanning(false);
             callQRApi(extractedId);
           }
         }
       } catch (err) {
-        console.error("❌ Scanning error:", err);
+        console.error("Scanning error:", err);
       }
-    }, 500); // Check every 500ms
+    }, 300);
   };
 
   const stopQRScanning = () => {
     if (scanIntervalRef.current) {
       clearInterval(scanIntervalRef.current);
       scanIntervalRef.current = null;
-      console.log("🛑 QR scanning stopped");
     }
   };
 
-  // Scan QR from image file
-  const scanQRFromImage = (file) => {
-    if (!file) return;
-
-    setLoading(true);
-    setError('');
-
-    const img = new Image();
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-
-    img.onload = () => {
-      try {
-        canvas.width = img.width;
-        canvas.height = img.height;
-        context.drawImage(img, 0, 0, img.width, img.height);
-        
-        const imageData = context.getImageData(0, 0, img.width, img.height);
-        const code = jsQR(imageData.data, img.width, img.height, {
-          inversionAttempts: 'dontInvert',
-        });
-        
-        if (code) {
-          console.log("🎯 QR Code from image:", code.data);
-          const extractedId = extractQRIdFromScannedData(code.data);
-          callQRApi(extractedId);
-        } else {
-          setError('No QR code found in the image');
-          setLoading(false);
-        }
-      } catch (err) {
-        console.error('Image QR scanning error:', err);
-        setError('Failed to scan QR code from image');
-        setLoading(false);
-      }
-    };
-
-    img.onerror = () => {
-      setError('Failed to load image');
-      setLoading(false);
-    };
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
-  };
-
-  // Handle file input change
-  const handleFileSelect = (event) => {
-    const file = event.target.files[0];
-    if (file) {
-      if (!file.type.startsWith('image/')) {
-        setError('Please select an image file');
-        return;
-      }
-      scanQRFromImage(file);
-    }
-    event.target.value = '';
-  };
-
-  // Open gallery/file picker
-  const handleGalleryScan = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
-    }
-  };
-
-  // FIXED CAMERA FUNCTION
+  // Camera functions
   const startCamera = async () => {
     try {
-      console.log("📹 Starting camera...");
       setCameraError('');
       setCameraReady(false);
       
       if (!navigator.mediaDevices?.getUserMedia) {
-        setCameraError('Camera API not supported in this browser');
+        setCameraError('Camera API not supported');
         return false;
       }
 
-      // Stop existing stream
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
       }
@@ -290,50 +143,39 @@ const Scan = () => {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         
-        // Wait for video to be ready
         videoRef.current.onloadeddata = () => {
-          console.log("✅ Camera video loaded");
+          console.log("✅ Camera ready - starting scan");
           setCameraReady(true);
           startQRScanning();
         };
 
-        videoRef.current.onerror = (error) => {
-          console.error("❌ Video error:", error);
-          setCameraError('Failed to load camera video');
-        };
-
-        // Fallback: if onloadeddata doesn't fire, start after a timeout
+        // Fallback for faster startup
         setTimeout(() => {
-          if (!cameraReady) {
-            console.log("🔄 Fallback: Starting camera after timeout");
+          if (!cameraReady && videoRef.current?.readyState >= 2) {
+            console.log("🔄 Fallback camera start");
             setCameraReady(true);
             startQRScanning();
           }
-        }, 2000);
+        }, 1000);
       }
       
       return true;
     } catch (err) {
-      console.error('❌ Camera access error:', err);
+      console.error('Camera access error:', err);
       let errorMessage = 'Cannot access camera';
       
       if (err.name === 'NotAllowedError') {
-        errorMessage = 'Camera permission denied. Please allow camera access in your browser settings.';
+        errorMessage = 'Camera permission denied';
       } else if (err.name === 'NotFoundError') {
-        errorMessage = 'No camera found on this device.';
-      } else if (err.name === 'NotSupportedError') {
-        errorMessage = 'Camera not supported in this browser.';
-      } else {
-        errorMessage = `Camera error: ${err.message}`;
+        errorMessage = 'No camera found';
       }
-      
       setCameraError(errorMessage);
       return false;
     }
   };
 
   const stopCamera = () => {
-    console.log("🛑 Stopping camera...");
+    console.log("🛑 Stopping camera");
     stopQRScanning();
     setCameraReady(false);
     
@@ -349,39 +191,33 @@ const Scan = () => {
     }
   };
 
-  // Main scan button click
   const handleScanClick = async () => {
-    console.log("🎬 Scan button clicked");
+    console.log("📱 Scan button clicked - starting camera immediately");
     setIsScanning(true);
     setError('');
     setCameraError('');
-    setActiveTab('search');
     
     if (hasCamera) {
-      console.log("📷 Has camera, starting...");
       await startCamera();
     } else {
-      console.log("❌ No camera available");
-      setCameraError('No camera available on this device');
+      setCameraError('No camera available');
     }
   };
 
-  // Close scanner
   const handleCloseScanner = () => {
-    console.log("🔒 Closing scanner");
+    console.log("❌ Closing scanner manually");
     setIsScanning(false);
     setLoading(false);
     stopCamera();
   };
 
-  // CALL QR API
+  // API call
   const callQRApi = async (id) => {
     setLoading(true);
     setError('');
     try {
       console.log("🚀 Calling API with ID:", id);
       
-      // Clean the API base URL
       const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
       const url = `${baseUrl}/api/posync/QR?id=${encodeURIComponent(id)}`;
       
@@ -390,54 +226,58 @@ const Scan = () => {
       const response = await axios.get(url, { timeout: 10000 });
       const data = response.data;
       
-      console.log("✅ API Response:", data);
+      console.log("✅ API Response received:", data);
       
       setScannedData(data);
-      setEnteredQty(data.qty?.toString() || '');
       
-      // Close scanner if open
-      if (isScanning) {
-        setIsScanning(false);
-        stopCamera();
-      }
+      // Always reset enteredQty to empty when new QR is scanned
+      setEnteredQty('');
       
     } catch (err) {
       console.error('❌ API Error:', err);
-      const errorMsg = err.response?.data?.message || err.response?.data?.statusDesc || err.message || 'Failed to fetch data';
+      const errorMsg = err.response?.data?.message || err.message || 'Failed to fetch data';
       setError(`API Error: ${errorMsg}`);
     } finally {
       setLoading(false);
     }
   };
 
-  // Update PO quantity
-  const updatePOQuantity = async () => {
-    if (!enteredQty || !scannedData) return;
-    setUpdateLoading(true);
-    setError('');
-    try {
-      const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
-      const url = `${baseUrl}/api/posync/UpdatePO`;
-      const extractedQRId = getQRIdFromURL() || scannedData.qrCodeId || scannedData.id;
-      const payload = {
-        QRCodeId: extractedQRId,
-        EnteredQty: parseInt(enteredQty, 10)
-      };
-      const response = await axios.post(url, payload);
-      const data = response.data;
-      if (data.statusCode === 200 || data.status === 'Qty Updated') {
-        setScannedData(prev => ({ ...prev, qty: enteredQty }));
-        setIsEditing(false);
-        alert('Quantity updated successfully!');
-      } else {
-        throw new Error(data.statusDesc || 'Failed to update quantity');
-      }
-    } catch (err) {
-      setError(err.response?.data?.statusDesc || err.message || 'Failed to update quantity');
-    } finally {
-      setUpdateLoading(false);
+ const updatePOQuantity = async () => {
+  if (!enteredQty || !scannedData) return;
+  setUpdateLoading(true);
+  setError('');
+  try {
+    const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
+    const url = `${baseUrl}/api/posync/UpdatePO`;
+    const payload = {
+      QRCodeId: scannedData.qrCodeId || scannedData.id,
+      EnteredQty: parseInt(enteredQty, 10)
+    };
+    const response = await axios.post(url, payload);
+    const data = response.data;
+    if (data.statusCode === 200 || data.status === 'Qty Updated') {
+      // Update the scanned data with new quantity and status
+      setScannedData(prev => ({ 
+        ...prev, 
+        enteredQty: enteredQty, // Add this line to store entered quantity
+        qty: enteredQty,
+        quantity: enteredQty,
+        status: 'Qty Updated'
+      }));
+      
+      // Clear the input field after successful save
+      setEnteredQty('');
+      
+      alert('Quantity updated successfully!');
+    } else {
+      throw new Error(data.statusDesc || 'Failed to update quantity');
     }
-  };
+  } catch (err) {
+    setError(err.response?.data?.statusDesc || err.message || 'Failed to update quantity');
+  } finally {
+    setUpdateLoading(false);
+  }
+};
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
@@ -452,11 +292,38 @@ const Scan = () => {
     }
   };
 
+const getDisplayQuantity = () => {
+  if (!scannedData) return 'N/A';
+  
+  console.log("Scanned Data fields:", Object.keys(scannedData));
+  console.log("Scanned Data:", scannedData);
+  
+  if (scannedData.status === 'Qty Updated') {
+    // Try different possible field names for entered quantity
+    return scannedData.enteredQty || scannedData.EnteredQty || scannedData.enteredQuantity || scannedData.updatedQty || scannedData.qty || scannedData.quantity || 'N/A';
+  } else {
+    return scannedData.quantity || scannedData.qty || 'N/A';
+  }
+};
   // Render purchase order details
   const renderPurchaseOrderDetails = (data) => {
     if (!data) return null;
 
     const details = [
+      { 
+        label: "Enter the Quantity", 
+        value: (
+          <div style={styles.quantityInputContainer}>
+            <input
+              type="number"
+              value={enteredQty}
+              onChange={(e) => setEnteredQty(e.target.value)}
+              placeholder="Enter new quantity"
+              style={styles.quantityInputField}
+            />
+          </div>
+        )
+      },
       { icon: <FileText size={16} color="#3B82F6" />, label: "PO Number", value: data.poNumber || 'N/A' },
       { icon: <Calendar size={16} color="#10B981" />, label: "PO Date", value: formatDate(data.poDate) },
       { icon: <User size={16} color="#8B5CF6" />, label: "Customer", value: data.customer || 'N/A' },
@@ -465,27 +332,9 @@ const Scan = () => {
       { 
         icon: <Package size={16} color="#8B5CF6" />, 
         label: "Quantity", 
-        value: isEditing ? (
-          <div style={styles.quantityEditContainer}>
-            <input
-              type="number"
-              value={enteredQty}
-              onChange={(e) => setEnteredQty(e.target.value)}
-              style={styles.quantityInput}
-            />
-            <button onClick={updatePOQuantity} disabled={updateLoading} style={styles.saveButton}>
-              {updateLoading ? <Loader size={14} /> : <Save size={14} />}
-            </button>
-            <button onClick={() => setIsEditing(false)} style={styles.cancelButton}>
-              <X size={14} />
-            </button>
-          </div>
-        ) : (
+        value: (
           <div style={styles.quantityDisplayContainer}>
-            <span>{data.qty || data.quantity || 'N/A'}</span>
-            <button onClick={() => setIsEditing(true)} style={styles.editButton}>
-              <Edit size={14} />
-            </button>
+            <span style={styles.quantityValue}>{getDisplayQuantity()}</span>
           </div>
         )
       },
@@ -501,7 +350,7 @@ const Scan = () => {
         <div style={styles.detailsGrid}>
           {details.map((detail, index) => (
             <div key={index} style={styles.detailItem}>
-              <div style={styles.detailIcon}>{detail.icon}</div>
+              {detail.icon && <div style={styles.detailIcon}>{detail.icon}</div>}
               <div style={styles.detailContent}>
                 <div style={styles.detailLabel}>{detail.label}</div>
                 <div style={styles.detailValue}>{detail.value}</div>
@@ -509,6 +358,19 @@ const Scan = () => {
             </div>
           ))}
         </div>
+        
+        {/* Save Button below Status */}
+        <div style={styles.saveButtonContainer}>
+          <button 
+            onClick={updatePOQuantity} 
+            disabled={updateLoading || !enteredQty}
+            style={styles.mainSaveButton}
+          >
+            {updateLoading ? <Loader size={16} /> : <Save size={16} />}
+            {updateLoading ? 'Saving...' : 'Save Quantity'}
+          </button>
+        </div>
+
         <div style={styles.successMessage}>
           <CheckCircle size={16} color="#10B981" />
           <span>QR code scanned successfully!</span>
@@ -517,96 +379,8 @@ const Scan = () => {
     );
   };
 
-  // Render tab content
-  const renderTabContent = () => {
-    switch (activeTab) {
-      case 'search':
-        return (
-          <div style={styles.tabContent}>
-            <div style={styles.cameraContainer}>
-              {cameraError ? (
-                <div style={styles.cameraError}>
-                  <CameraOff size={48} color="#EF4444" />
-                  <p style={styles.cameraErrorText}>{cameraError}</p>
-                  <button style={styles.retryButton} onClick={startCamera}>
-                    Retry Camera
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <video 
-                    ref={videoRef} 
-                    style={styles.cameraVideo} 
-                    playsInline 
-                    muted 
-                    autoPlay
-                  />
-                  <canvas ref={canvasRef} style={{ display: 'none' }} />
-                  
-                  {!cameraReady && !cameraError && (
-                    <div style={styles.cameraLoading}>
-                      <Loader size={32} color="#3B82F6" />
-                      <p style={styles.loadingText}>Initializing camera...</p>
-                    </div>
-                  )}
-                  
-                  <div style={styles.scannerFrame}>
-                    <div style={styles.cornerTL}></div>
-                    <div style={styles.cornerTR}></div>
-                    <div style={styles.cornerBL}></div>
-                    <div style={styles.cornerBR}></div>
-                  </div>
-                  
-                  {cameraReady && (
-                    <div style={styles.scanningStatus}>
-                      <Loader size={16} color="#3B82F6" />
-                      <p style={styles.scanningText}>Scanning for QR codes...</p>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-            <div style={styles.tabHint}>Point camera at QR code</div>
-          </div>
-        );
-      
-      case 'create':
-        return (
-          <div style={styles.tabContent}>
-            <div style={styles.gallerySection}>
-              <div style={styles.galleryContainer} onClick={handleGalleryScan}>
-                <div style={styles.galleryContent}>
-                  <Image size={48} color="#8B5CF6" />
-                  <p style={styles.galleryText}>Choose from Gallery</p>
-                  <p style={styles.gallerySubtext}>Select image with QR code</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      
-      default:
-        return (
-          <div style={styles.tabContent}>
-            <div style={styles.comingSoonContainer}>
-              <p style={styles.comingSoonText}>Feature coming soon</p>
-            </div>
-          </div>
-        );
-    }
-  };
-
   return (
     <div style={styles.container}>
-      <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept="image/*" onChange={handleFileSelect} />
-
-      {getQRIdFromURL() && !scannedData && (
-        <div style={styles.qrIdInfo}>
-          QR Code Detected: {getQRIdFromURL()}
-          {loading && <Loader size={14} />}
-        </div>
-      )}
-
       <div style={styles.card}>
         <div style={styles.content}>
           <div style={styles.iconContainer} onClick={handleScanClick}>
@@ -653,27 +427,52 @@ const Scan = () => {
             <div style={styles.placeholder}></div>
           </div>
 
-          <div style={styles.tabContainer}>
-            {['search', 'translate', 'live', 'create'].map(tab => (
-              <button 
-                key={tab} 
-                style={{
-                  ...styles.tabButton,
-                  ...(activeTab === tab && styles.tabButtonActive)
-                }} 
-                onClick={() => setActiveTab(tab)}
-              >
-                {tab === 'search' && <Search size={18} />}
-                {tab === 'translate' && <Languages size={18} />}
-                {tab === 'live' && <Camera size={18} />}
-                {tab === 'create' && <Image size={18} />}
-                <span>{tab.charAt(0).toUpperCase() + tab.slice(1)}</span>
-              </button>
-            ))}
-          </div>
-
           <div style={styles.tabContentContainer}>
-            {renderTabContent()}
+            <div style={styles.tabContent}>
+              <div style={styles.cameraContainer}>
+                {cameraError ? (
+                  <div style={styles.cameraError}>
+                    <CameraOff size={48} color="#EF4444" />
+                    <p style={styles.cameraErrorText}>{cameraError}</p>
+                    <button style={styles.retryButton} onClick={startCamera}>
+                      Retry Camera
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <video 
+                      ref={videoRef} 
+                      style={styles.cameraVideo} 
+                      playsInline 
+                      muted 
+                      autoPlay
+                    />
+                    <canvas ref={canvasRef} style={{ display: 'none' }} />
+                    
+                    {!cameraReady && !cameraError && (
+                      <div style={styles.cameraLoading}>
+                        <Loader size={32} color="#3B82F6" />
+                        <p style={styles.loadingText}>Initializing camera...</p>
+                      </div>
+                    )}
+                    
+                    <div style={styles.scannerFrame}>
+                      <div style={styles.cornerTL}></div>
+                      <div style={styles.cornerTR}></div>
+                      <div style={styles.cornerBL}></div>
+                      <div style={styles.cornerBR}></div>
+                    </div>
+                    
+                    {cameraReady && (
+                      <div style={styles.scanningStatus}>
+                        <Loader size={16} color="#3B82F6" />
+                        <p style={styles.scanningText}>Scanning for QR codes...</p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -691,18 +490,6 @@ const styles = {
     justifyContent: 'center',
     padding: '16px',
     flexDirection: 'column',
-  },
-  qrIdInfo: {
-    backgroundColor: '#e0f2fe',
-    color: '#0369a1',
-    padding: '8px 16px',
-    borderRadius: '8px',
-    marginBottom: '16px',
-    fontSize: '14px',
-    fontWeight: '500',
-    textAlign: 'center',
-    maxWidth: '500px',
-    width: '100%',
   },
   card: {
     backgroundColor: '#ffffff',
@@ -794,31 +581,6 @@ const styles = {
   placeholder: {
     width: '32px',
   },
-  tabContainer: {
-    display: 'flex',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    padding: '8px',
-    margin: '0 16px',
-    borderRadius: '12px',
-  },
-  tabButton: {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: '4px',
-    backgroundColor: 'transparent',
-    border: 'none',
-    color: 'rgba(255, 255, 255, 0.7)',
-    padding: '12px 8px',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    fontSize: '12px',
-  },
-  tabButtonActive: {
-    backgroundColor: 'rgba(59, 130, 246, 0.2)',
-    color: '#3B82F6',
-  },
   tabContentContainer: {
     flex: 1,
     padding: '20px',
@@ -827,13 +589,6 @@ const styles = {
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
-  },
-  tabHint: {
-    color: '#ffffff',
-    fontSize: '14px',
-    textAlign: 'center',
-    marginTop: '16px',
-    opacity: 0.8,
   },
   cameraContainer: {
     flex: 1,
@@ -908,88 +663,6 @@ const styles = {
     borderRadius: '6px',
     cursor: 'pointer',
   },
-  gallerySection: {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '20px',
-  },
-  galleryContainer: {
-    flex: 1,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: '12px',
-    border: '2px dashed rgba(255, 255, 255, 0.3)',
-    cursor: 'pointer',
-  },
-  galleryContent: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: '12px',
-    textAlign: 'center',
-    color: '#ffffff',
-    padding: '20px',
-  },
-  galleryText: {
-    fontSize: '16px',
-    fontWeight: '600',
-    margin: 0,
-  },
-  gallerySubtext: {
-    fontSize: '12px',
-    margin: 0,
-    opacity: 0.8,
-  },
-  comingSoonContainer: {
-    flex: 1,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    color: '#ffffff',
-  },
-  comingSoonText: {
-    fontSize: '16px',
-    opacity: 0.8,
-  },
-  cornerTL: {
-    position: 'absolute',
-    top: '-2px',
-    left: '-2px',
-    width: '20px',
-    height: '20px',
-    borderTop: '3px solid #3B82F6',
-    borderLeft: '3px solid #3B82F6',
-  },
-  cornerTR: {
-    position: 'absolute',
-    top: '-2px',
-    right: '-2px',
-    width: '20px',
-    height: '20px',
-    borderTop: '3px solid #3B82F6',
-    borderRight: '3px solid #3B82F6',
-  },
-  cornerBL: {
-    position: 'absolute',
-    bottom: '-2px',
-    left: '-2px',
-    width: '20px',
-    height: '20px',
-    borderBottom: '3px solid #3B82F6',
-    borderLeft: '3px solid #3B82F6',
-  },
-  cornerBR: {
-    position: 'absolute',
-    bottom: '-2px',
-    right: '-2px',
-    width: '20px',
-    height: '20px',
-    borderBottom: '3px solid #3B82F6',
-    borderRight: '3px solid #3B82F6',
-  },
   detailsContainer: {
     marginTop: '20px',
     padding: '16px',
@@ -1045,45 +718,46 @@ const styles = {
     fontWeight: '500',
     color: '#1e293b',
   },
-  quantityEditContainer: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
+  quantityInputContainer: {
+    width: '100%',
   },
-  quantityInput: {
-    padding: '4px 8px',
+  quantityInputField: {
+    width: '80%',
+    padding: '8px 12px',
     border: '1px solid #d1d5db',
-    borderRadius: '4px',
-    width: '80px',
+    borderRadius: '6px',
+    fontSize: '14px',
+    backgroundColor: 'white',
   },
   quantityDisplayContainer: {
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
   },
-  editButton: {
-    background: 'none',
-    border: 'none',
-    cursor: 'pointer',
-    padding: '4px',
-    borderRadius: '4px',
-    backgroundColor: '#f3f4f6',
+  quantityValue: {
+    fontSize: '14px',
+    fontWeight: '500',
+    color: '#1e293b',
   },
-  saveButton: {
-    background: '#10B981',
-    border: 'none',
-    cursor: 'pointer',
-    padding: '4px 8px',
-    borderRadius: '4px',
-    color: 'white',
+  saveButtonContainer: {
+    marginTop: '20px',
+    display: 'flex',
+    justifyContent: 'center',
   },
-  cancelButton: {
-    background: '#EF4444',
-    border: 'none',
-    cursor: 'pointer',
-    padding: '4px 8px',
-    borderRadius: '4px',
+  mainSaveButton: {
+    backgroundColor: '#10B981',
     color: 'white',
+    border: 'none',
+    padding: '12px 24px',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+    minWidth: '150px',
   },
   successMessage: {
     display: 'flex',
@@ -1120,6 +794,42 @@ const styles = {
     color: '#DC2626',
     margin: 0,
   },
+  cornerTL: {
+    position: 'absolute',
+    top: '-2px',
+    left: '-2px',
+    width: '20px',
+    height: '20px',
+    borderTop: '3px solid #3B82F6',
+    borderLeft: '3px solid #3B82F6',
+  },
+  cornerTR: {
+    position: 'absolute',
+    top: '-2px',
+    right: '-2px',
+    width: '20px',
+    height: '20px',
+    borderTop: '3px solid #3B82F6',
+    borderRight: '3px solid #3B82F6',
+  },
+  cornerBL: {
+    position: 'absolute',
+    bottom: '-2px',
+    left: '-2px',
+    width: '20px',
+    height: '20px',
+    borderBottom: '3px solid #3B82F6',
+    borderLeft: '3px solid #3B82F6',
+  },
+  cornerBR: {
+    position: 'absolute',
+    bottom: '-2px',
+    right: '-2px',
+    width: '20px',
+    height: '20px',
+    borderBottom: '3px solid #3B82F6',
+    borderRight: '3px solid #3B82F6',
+  },
 };
 
-export default Scan;
+export default ScanSimple;
