@@ -33,6 +33,7 @@ const Scan = () => {
           const devices = await navigator.mediaDevices.enumerateDevices();
           const videoDevices = devices.filter(device => device.kind === 'videoinput');
           setHasCamera(videoDevices.length > 0);
+          console.log("📷 Camera check:", videoDevices.length > 0 ? "Available" : "Not available");
         } else {
           setHasCamera(false);
         }
@@ -94,7 +95,7 @@ const Scan = () => {
     }
   };
 
-  // SIMPLIFIED QR ID extraction - Just get the raw data
+  // SIMPLIFIED QR ID extraction
   const extractQRIdFromScannedData = (scannedText) => {
     console.log("🔍 Raw QR data:", scannedText);
     
@@ -131,9 +132,17 @@ const Scan = () => {
 
   // SIMPLE QR SCANNING FUNCTION
   const startQRScanning = () => {
-    if (!videoRef.current || !canvasRef.current) return;
+    if (!videoRef.current || !canvasRef.current) {
+      console.log("❌ Video or canvas not ready");
+      return;
+    }
 
     console.log("🔄 Starting QR scanning...");
+    
+    // Clear any existing interval
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+    }
     
     scanIntervalRef.current = setInterval(() => {
       try {
@@ -251,14 +260,15 @@ const Scan = () => {
     }
   };
 
-  // Start camera
+  // FIXED CAMERA FUNCTION
   const startCamera = async () => {
     try {
+      console.log("📹 Starting camera...");
       setCameraError('');
       setCameraReady(false);
       
       if (!navigator.mediaDevices?.getUserMedia) {
-        setCameraError('Camera not supported in this browser');
+        setCameraError('Camera API not supported in this browser');
         return false;
       }
 
@@ -280,22 +290,41 @@ const Scan = () => {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         
+        // Wait for video to be ready
         videoRef.current.onloadeddata = () => {
+          console.log("✅ Camera video loaded");
           setCameraReady(true);
-          console.log("📹 Camera ready, starting QR scan");
           startQRScanning();
         };
+
+        videoRef.current.onerror = (error) => {
+          console.error("❌ Video error:", error);
+          setCameraError('Failed to load camera video');
+        };
+
+        // Fallback: if onloadeddata doesn't fire, start after a timeout
+        setTimeout(() => {
+          if (!cameraReady) {
+            console.log("🔄 Fallback: Starting camera after timeout");
+            setCameraReady(true);
+            startQRScanning();
+          }
+        }, 2000);
       }
       
       return true;
     } catch (err) {
-      console.error('Camera error:', err);
+      console.error('❌ Camera access error:', err);
       let errorMessage = 'Cannot access camera';
       
       if (err.name === 'NotAllowedError') {
-        errorMessage = 'Camera permission denied. Please allow camera access.';
+        errorMessage = 'Camera permission denied. Please allow camera access in your browser settings.';
       } else if (err.name === 'NotFoundError') {
         errorMessage = 'No camera found on this device.';
+      } else if (err.name === 'NotSupportedError') {
+        errorMessage = 'Camera not supported in this browser.';
+      } else {
+        errorMessage = `Camera error: ${err.message}`;
       }
       
       setCameraError(errorMessage);
@@ -304,11 +333,14 @@ const Scan = () => {
   };
 
   const stopCamera = () => {
+    console.log("🛑 Stopping camera...");
     stopQRScanning();
     setCameraReady(false);
     
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current.getTracks().forEach(track => {
+        track.stop();
+      });
       streamRef.current = null;
     }
     
@@ -319,18 +351,24 @@ const Scan = () => {
 
   // Main scan button click
   const handleScanClick = async () => {
+    console.log("🎬 Scan button clicked");
     setIsScanning(true);
     setError('');
     setCameraError('');
     setActiveTab('search');
     
     if (hasCamera) {
+      console.log("📷 Has camera, starting...");
       await startCamera();
+    } else {
+      console.log("❌ No camera available");
+      setCameraError('No camera available on this device');
     }
   };
 
   // Close scanner
   const handleCloseScanner = () => {
+    console.log("🔒 Closing scanner");
     setIsScanning(false);
     setLoading(false);
     stopCamera();
@@ -367,8 +405,6 @@ const Scan = () => {
       console.error('❌ API Error:', err);
       const errorMsg = err.response?.data?.message || err.response?.data?.statusDesc || err.message || 'Failed to fetch data';
       setError(`API Error: ${errorMsg}`);
-      
-      // Don't restart scanning on API error
     } finally {
       setLoading(false);
     }
@@ -498,24 +534,33 @@ const Scan = () => {
                 </div>
               ) : (
                 <>
-                  <video ref={videoRef} style={styles.cameraVideo} playsInline muted />
+                  <video 
+                    ref={videoRef} 
+                    style={styles.cameraVideo} 
+                    playsInline 
+                    muted 
+                    autoPlay
+                  />
                   <canvas ref={canvasRef} style={{ display: 'none' }} />
-                  {!cameraReady && (
+                  
+                  {!cameraReady && !cameraError && (
                     <div style={styles.cameraLoading}>
                       <Loader size={32} color="#3B82F6" />
-                      <p>Initializing camera...</p>
+                      <p style={styles.loadingText}>Initializing camera...</p>
                     </div>
                   )}
+                  
                   <div style={styles.scannerFrame}>
                     <div style={styles.cornerTL}></div>
                     <div style={styles.cornerTR}></div>
                     <div style={styles.cornerBL}></div>
                     <div style={styles.cornerBR}></div>
                   </div>
+                  
                   {cameraReady && (
                     <div style={styles.scanningStatus}>
                       <Loader size={16} color="#3B82F6" />
-                      <p>Scanning for QR codes...</p>
+                      <p style={styles.scanningText}>Scanning for QR codes...</p>
                     </div>
                   )}
                 </>
@@ -544,7 +589,7 @@ const Scan = () => {
         return (
           <div style={styles.tabContent}>
             <div style={styles.comingSoonContainer}>
-              <p>Feature coming soon</p>
+              <p style={styles.comingSoonText}>Feature coming soon</p>
             </div>
           </div>
         );
@@ -570,7 +615,14 @@ const Scan = () => {
             </div>
           </div>
 
-          <button style={styles.mainScanButton} onClick={handleScanClick} disabled={loading}>
+          <button 
+            style={{
+              ...styles.mainScanButton,
+              ...(loading && styles.buttonDisabled)
+            }} 
+            onClick={handleScanClick} 
+            disabled={loading}
+          >
             {loading ? <Loader size={16} /> : <ScanIcon size={16} />}
             {loading ? 'Scanning...' : 'Scan QR Code'}
           </button>
@@ -583,7 +635,7 @@ const Scan = () => {
             <div style={styles.errorContainer}>
               <div style={styles.errorHeader}>
                 <X size={16} color="#EF4444" />
-                <span>Error</span>
+                <span style={styles.errorText}>Error</span>
               </div>
               <p style={styles.errorMessage}>{error}</p>
             </div>
@@ -603,7 +655,14 @@ const Scan = () => {
 
           <div style={styles.tabContainer}>
             {['search', 'translate', 'live', 'create'].map(tab => (
-              <button key={tab} style={{...styles.tabButton, ...(activeTab === tab && styles.tabButtonActive)}} onClick={() => setActiveTab(tab)}>
+              <button 
+                key={tab} 
+                style={{
+                  ...styles.tabButton,
+                  ...(activeTab === tab && styles.tabButtonActive)
+                }} 
+                onClick={() => setActiveTab(tab)}
+              >
                 {tab === 'search' && <Search size={18} />}
                 {tab === 'translate' && <Languages size={18} />}
                 {tab === 'live' && <Camera size={18} />}
@@ -613,12 +672,15 @@ const Scan = () => {
             ))}
           </div>
 
-          <div style={styles.tabContentContainer}>{renderTabContent()}</div>
+          <div style={styles.tabContentContainer}>
+            {renderTabContent()}
+          </div>
         </div>
       )}
     </div>
   );
 };
+
 const styles = {
   container: {
     minHeight: '100vh',
@@ -637,18 +699,6 @@ const styles = {
     borderRadius: '8px',
     marginBottom: '16px',
     fontSize: '14px',
-    fontWeight: '500',
-    textAlign: 'center',
-    maxWidth: '500px',
-    width: '100%',
-  },
-  debugInfo: {
-    backgroundColor: '#dbeafe',
-    color: '#1e40af',
-    padding: '8px 16px',
-    borderRadius: '8px',
-    marginBottom: '16px',
-    fontSize: '12px',
     fontWeight: '500',
     textAlign: 'center',
     maxWidth: '500px',
@@ -682,7 +732,6 @@ const styles = {
     margin: '0 auto',
     boxShadow: '0 2px 8px rgba(59, 130, 246, 0.15)',
     border: '1px solid #e2e8f0',
-    transition: 'all 0.2s ease',
   },
   mainScanButton: {
     backgroundColor: '#3B82F6',
@@ -700,8 +749,6 @@ const styles = {
     margin: '0 auto',
     width: '60%',
     maxWidth: '200px',
-    boxShadow: '0 2px 6px rgba(59, 130, 246, 0.3)',
-    transition: 'all 0.2s ease',
   },
   buttonDisabled: {
     opacity: 0.6,
@@ -712,7 +759,6 @@ const styles = {
     fontSize: '12px',
     marginTop: '8px',
   },
-  // Scanner Overlay Styles
   scannerOverlay: {
     position: 'fixed',
     top: 0,
@@ -738,7 +784,6 @@ const styles = {
     cursor: 'pointer',
     padding: '6px',
     borderRadius: '6px',
-    transition: 'background-color 0.2s ease',
   },
   scannerTitle: {
     color: '#ffffff',
@@ -749,7 +794,6 @@ const styles = {
   placeholder: {
     width: '32px',
   },
-  // Tab Navigation
   tabContainer: {
     display: 'flex',
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
@@ -762,7 +806,6 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: '4px',
     backgroundColor: 'transparent',
     border: 'none',
@@ -771,18 +814,13 @@ const styles = {
     borderRadius: '8px',
     cursor: 'pointer',
     fontSize: '12px',
-    fontWeight: '500',
-    transition: 'all 0.3s ease',
   },
   tabButtonActive: {
     backgroundColor: 'rgba(59, 130, 246, 0.2)',
     color: '#3B82F6',
   },
-  // Tab Content
   tabContentContainer: {
     flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
     padding: '20px',
   },
   tabContent: {
@@ -797,7 +835,6 @@ const styles = {
     marginTop: '16px',
     opacity: 0.8,
   },
-  // Camera Section
   cameraContainer: {
     flex: 1,
     display: 'flex',
@@ -849,13 +886,11 @@ const styles = {
   scanningText: {
     margin: 0,
     fontSize: '14px',
-    color: '#ffffff',
   },
   cameraError: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: '16px',
     textAlign: 'center',
     color: '#ffffff',
@@ -864,9 +899,15 @@ const styles = {
   cameraErrorText: {
     fontSize: '14px',
     margin: 0,
-    textAlign: 'center',
   },
-  // Gallery Section
+  retryButton: {
+    backgroundColor: '#3B82F6',
+    color: 'white',
+    border: 'none',
+    padding: '10px 20px',
+    borderRadius: '6px',
+    cursor: 'pointer',
+  },
   gallerySection: {
     flex: 1,
     display: 'flex',
@@ -882,14 +923,11 @@ const styles = {
     borderRadius: '12px',
     border: '2px dashed rgba(255, 255, 255, 0.3)',
     cursor: 'pointer',
-    transition: 'all 0.3s ease',
-    minHeight: '200px',
   },
   galleryContent: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: '12px',
     textAlign: 'center',
     color: '#ffffff',
@@ -905,62 +943,17 @@ const styles = {
     margin: 0,
     opacity: 0.8,
   },
-  galleryHint: {
-    color: '#ffffff',
-    fontSize: '14px',
-    textAlign: 'center',
-    opacity: 0.7,
-  },
-  // Coming Soon Sections
   comingSoonContainer: {
     flex: 1,
     display: 'flex',
-    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '16px',
-    textAlign: 'center',
-    color: '#ffffff',
-    padding: '40px 20px',
-  },
-  comingSoonTitle: {
-    fontSize: '20px',
-    fontWeight: '600',
-    margin: 0,
     color: '#ffffff',
   },
   comingSoonText: {
-    fontSize: '14px',
-    margin: 0,
-    opacity: 0.8,
-    maxWidth: '300px',
-    lineHeight: '1.5',
-  },
-  // Scanner Footer
-  scannerFooter: {
-    padding: '20px',
-    textAlign: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.9)',
-  },
-  scannerHint: {
-    color: '#ffffff',
-    fontSize: '14px',
-    marginBottom: '16px',
+    fontSize: '16px',
     opacity: 0.8,
   },
-  // Buttons
-  retryButton: {
-    backgroundColor: '#3B82F6',
-    color: 'white',
-    border: 'none',
-    padding: '10px 20px',
-    borderRadius: '6px',
-    fontSize: '14px',
-    fontWeight: '600',
-    cursor: 'pointer',
-    marginTop: '12px',
-  },
-  // Scanner corners
   cornerTL: {
     position: 'absolute',
     top: '-2px',
@@ -969,7 +962,6 @@ const styles = {
     height: '20px',
     borderTop: '3px solid #3B82F6',
     borderLeft: '3px solid #3B82F6',
-    borderTopLeftRadius: '6px',
   },
   cornerTR: {
     position: 'absolute',
@@ -979,7 +971,6 @@ const styles = {
     height: '20px',
     borderTop: '3px solid #3B82F6',
     borderRight: '3px solid #3B82F6',
-    borderTopRightRadius: '6px',
   },
   cornerBL: {
     position: 'absolute',
@@ -989,7 +980,6 @@ const styles = {
     height: '20px',
     borderBottom: '3px solid #3B82F6',
     borderLeft: '3px solid #3B82F6',
-    borderBottomLeftRadius: '6px',
   },
   cornerBR: {
     position: 'absolute',
@@ -999,19 +989,7 @@ const styles = {
     height: '20px',
     borderBottom: '3px solid #3B82F6',
     borderRight: '3px solid #3B82F6',
-    borderBottomRightRadius: '6px',
   },
-  scanLine: {
-    position: 'absolute',
-    top: '0',
-    left: '50%',
-    transform: 'translateX(-50%)',
-    width: '200px',
-    height: '2px',
-    backgroundColor: '#3B82F6',
-    animation: 'scan 2s linear infinite',
-  },
-  // Purchase Order Details Styles
   detailsContainer: {
     marginTop: '20px',
     padding: '16px',
@@ -1032,7 +1010,6 @@ const styles = {
     fontSize: '16px',
     fontWeight: '600',
     color: '#000080',
-    margin: 0,
   },
   detailsGrid: {
     display: 'flex',
@@ -1052,9 +1029,6 @@ const styles = {
     padding: '6px',
     backgroundColor: '#f1f5f9',
     borderRadius: '4px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   detailContent: {
     flex: 1,
@@ -1065,14 +1039,11 @@ const styles = {
     fontWeight: '600',
     color: '#64748b',
     marginBottom: '4px',
-    textTransform: 'uppercase',
-    letterSpacing: '0.5px',
   },
   detailValue: {
     fontSize: '14px',
     fontWeight: '500',
     color: '#1e293b',
-    wordBreak: 'break-word',
   },
   quantityEditContainer: {
     display: 'flex',
@@ -1083,7 +1054,6 @@ const styles = {
     padding: '4px 8px',
     border: '1px solid #d1d5db',
     borderRadius: '4px',
-    fontSize: '14px',
     width: '80px',
   },
   quantityDisplayContainer: {
@@ -1126,41 +1096,29 @@ const styles = {
     borderRadius: '6px',
     border: '1px solid #bbf7d0',
     color: '#166534',
-    fontSize: '14px',
-    fontWeight: '500',
   },
   errorContainer: {
     marginTop: '16px',
-    padding: '0',
+    padding: '16px',
     backgroundColor: '#fef2f2',
     borderRadius: '8px',
     border: '1px solid #fecaca',
-    overflow: 'hidden',
   },
   errorHeader: {
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: '8px',
-    padding: '12px',
-    backgroundColor: '#fef2f2',
-    borderBottom: '1px solid #fecaca',
+    marginBottom: '8px',
   },
   errorText: {
     fontSize: '14px',
     fontWeight: '600',
     color: '#EF4444',
-    margin: 0,
-  },
-  dataContainer: {
-    padding: '12px',
   },
   errorMessage: {
-    fontSize: '12px',
+    fontSize: '14px',
     color: '#DC2626',
-    wordBreak: 'break-all',
     margin: 0,
-    lineHeight: '1.4',
   },
 };
 
